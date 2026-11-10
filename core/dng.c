@@ -1,5 +1,6 @@
-/* DNG reading: Bayer CFA raw images, uncompressed or lossless JPEG,
- * tiled or in strips, with all linearisation and colour metadata. */
+/* DNG reading: Bayer CFA raw images and linear (demosaiced) camera RGB,
+ * uncompressed or lossless JPEG, tiled or in strips, with all linearisation
+ * and colour metadata. */
 #include "raw.h"
 
 void raw_free(Raw *raw) {
@@ -20,8 +21,9 @@ static TiffIfd *find_raw_ifd(const Tiff *t, int *photometric) {
     return NULL;
 }
 
-static int decode_block(const Tiff *t, const Blob *b, uint32_t comp, uint32_t bps, uint16_t *out, uint32_t bw, uint32_t bh) {
-    uint64_t n = (uint64_t)bw * bh;
+/* Decodes one tile or strip of bw x bh pixels with spp interleaved samples. */
+static int decode_block(const Tiff *t, const Blob *b, uint32_t comp, uint32_t bps, uint32_t spp, uint16_t *out, uint32_t bw, uint32_t bh) {
+    uint64_t n = (uint64_t)bw * bh * spp;
     if (comp == 1) {
         if (bps == 16) {
             if (b->len < n * 2) return ERR_CORRUPT;
@@ -30,11 +32,11 @@ static int decode_block(const Tiff *t, const Blob *b, uint32_t comp, uint32_t bp
             if (b->len < n) return ERR_CORRUPT;
             for (uint64_t i = 0; i < n; i++) out[i] = b->ptr[i];
         } else {
-            uint64_t row_bytes = ((uint64_t)bw * bps + 7) / 8;
+            uint64_t row_bytes = ((uint64_t)bw * spp * bps + 7) / 8, row = (uint64_t)bw * spp;
             if (b->len < row_bytes * bh) return ERR_CORRUPT;
             for (uint32_t y = 0; y < bh; y++) {
                 Bits r; bits_init(&r, b->ptr + row_bytes * y, b->ptr + row_bytes * (y + 1), 0);
-                for (uint32_t x = 0; x < bw; x++) out[(uint64_t)y * bw + x] = (uint16_t)bits_get(&r, (int)bps);
+                for (uint64_t x = 0; x < row; x++) out[y * row + x] = (uint16_t)bits_get(&r, (int)bps);
             }
         }
         return ERR_OK;
@@ -59,30 +61,35 @@ int dng_load(Raw *raw, const Tiff *t) {
     int photometric = 0;
     TiffIfd *ifd = find_raw_ifd(t, &photometric);
     if (!ifd) return ERR_UNSUPPORTED | (UNSUP_NO_RAW << 8);
-    if (photometric == 34892) return ERR_UNSUPPORTED | (UNSUP_LINEAR_RAW << 8);
+    int linear = photometric == 34892;
     uint32_t w = tiff_get_uint(t, ifd, 0x0100, 0), h = tiff_get_uint(t, ifd, 0x0101, 0);
     uint32_t bps = tiff_get_uint(t, ifd, 0x0102, 16), comp = tiff_get_uint(t, ifd, 0x0103, 1);
     uint32_t spp = tiff_get_uint(t, ifd, 0x0115, 1);
     if (!w || !h || w > 30000 || h > 30000) return ERR_FORMAT;
-    if (spp != 1 || bps < 8 || bps > 16 || tiff_get_uint(t, ifd, 0x011C, 1) != 1) return ERR_UNSUPPORTED | (UNSUP_LAYOUT << 8);
+    /* Linear DNGs: three samples of camera RGB (the profile's channels). */
+    if (linear && spp != 3) return ERR_UNSUPPORTED | (UNSUP_LINEAR_RAW << 8);
+    if ((!linear && spp != 1) || bps < 8 || bps > 16 || tiff_get_uint(t, ifd, 0x011C, 1) != 1) return ERR_UNSUPPORTED | (UNSUP_LAYOUT << 8);
     if (comp != 1 && comp != 7) return ERR_UNSUPPORTED | (UNSUP_COMPRESSION << 8);
-    if (tiff_get_uint(t, ifd, 0x828D, 2) != 2 || tiff_get_num(t, ifd, 0x828D, 1, 2) != 2 || tiff_get_uint(t, ifd, 0xC617, 1) != 1)
-        return ERR_UNSUPPORTED | (UNSUP_CFA << 8);
-    TiffEntry *pat = tiff_find(ifd, 0x828E);
-    if (!pat || pat->count != 4) return ERR_UNSUPPORTED | (UNSUP_CFA << 8);
-    int plane[3] = {0, 1, 2};
-    TiffEntry *pc = tiff_find(ifd, 0xC616);
-    if (pc) { if (pc->count != 3) return ERR_UNSUPPORTED | (UNSUP_CFA << 8); for (int i = 0; i < 3; i++) plane[i] = pc->data[i]; }
-    int counts[3] = {0, 0, 0};
-    for (int i = 0; i < 4; i++) {
-        int v = pat->data[i];
-        if (v > 2 || plane[v] > 2) return ERR_UNSUPPORTED | (UNSUP_CFA << 8);
-        raw->cfa_aa[i] = plane[v]; counts[plane[v]]++;
+    if (!linear) {
+        if (tiff_get_uint(t, ifd, 0x828D, 2) != 2 || tiff_get_num(t, ifd, 0x828D, 1, 2) != 2 || tiff_get_uint(t, ifd, 0xC617, 1) != 1)
+            return ERR_UNSUPPORTED | (UNSUP_CFA << 8);
+        TiffEntry *pat = tiff_find(ifd, 0x828E);
+        if (!pat || pat->count != 4) return ERR_UNSUPPORTED | (UNSUP_CFA << 8);
+        int plane[3] = {0, 1, 2};
+        TiffEntry *pc = tiff_find(ifd, 0xC616);
+        if (pc) { if (pc->count != 3) return ERR_UNSUPPORTED | (UNSUP_CFA << 8); for (int i = 0; i < 3; i++) plane[i] = pc->data[i]; }
+        int counts[3] = {0, 0, 0};
+        for (int i = 0; i < 4; i++) {
+            int v = pat->data[i];
+            if (v > 2 || plane[v] > 2) return ERR_UNSUPPORTED | (UNSUP_CFA << 8);
+            raw->cfa_aa[i] = plane[v]; counts[plane[v]]++;
+        }
+        if (counts[0] != 1 || counts[1] != 2 || counts[2] != 1) return ERR_UNSUPPORTED | (UNSUP_CFA << 8);
     }
-    if (counts[0] != 1 || counts[1] != 2 || counts[2] != 1) return ERR_UNSUPPORTED | (UNSUP_CFA << 8);
 
+    raw->spp = (int)spp;
     raw->width = w; raw->height = h;
-    raw->data = xalloc((size_t)w * h * sizeof(uint16_t));
+    raw->data = xalloc((size_t)w * h * spp * sizeof(uint16_t));
     if (!raw->data) return ERR_MEMORY;
     TiffEntry *tiles = tiff_find(ifd, 0x0144), *strips = tiff_find(ifd, 0x0111);
     uint32_t bw, bh, across, down;
@@ -96,17 +103,17 @@ int dng_load(Raw *raw, const Tiff *t) {
         across = 1; down = (h + bh - 1) / bh; blocks = strips;
     } else return ERR_FORMAT;
     if (blocks->nblobs < across * down) return ERR_CORRUPT;
-    uint16_t *tmp = xalloc((size_t)bw * bh * sizeof(uint16_t));
+    uint16_t *tmp = xalloc((size_t)bw * bh * spp * sizeof(uint16_t));
     if (!tmp) return ERR_MEMORY;
     int r = ERR_OK;
     for (uint32_t ty = 0; ty < down && !r; ty++)
         for (uint32_t tx = 0; tx < across && !r; tx++) {
             uint32_t rows = tiles ? bh : MIN(bh, h - ty * bh);   /* last strip may be short */
-            r = decode_block(t, &blocks->blobs[ty * across + tx], comp, bps, tmp, bw, rows);
+            r = decode_block(t, &blocks->blobs[ty * across + tx], comp, bps, spp, tmp, bw, rows);
             if (r) break;
             uint32_t x0 = tx * bw, y0 = ty * bh, cw = MIN(bw, w - x0), ch = MIN(rows, h - y0);
             for (uint32_t y = 0; y < ch; y++)
-                xmemcpy(raw->data + (uint64_t)(y0 + y) * w + x0, tmp + (uint64_t)y * bw, cw * sizeof(uint16_t));
+                xmemcpy(raw->data + ((uint64_t)(y0 + y) * w + x0) * spp, tmp + (uint64_t)y * bw * spp, (size_t)cw * spp * sizeof(uint16_t));
         }
     xfree(tmp);
     if (r) return r;
@@ -137,7 +144,14 @@ int dng_load(Raw *raw, const Tiff *t) {
     uint32_t rr = tiff_get_uint(t, ifd, 0xC619, 1), rc = (uint32_t)tiff_get_num(t, ifd, 0xC619, 1, 1);
     TiffEntry *bl = tiff_find(ifd, 0xC61A);
     for (int i = 0; i < 4; i++) raw->black[i] = 0;
-    if (bl && rr && rc && rr <= 16 && rc <= 16) {
+    if (bl && rr && rc && rr <= 16 && rc <= 16 && linear) {
+        /* One value per sample in each repeat cell: average the cells. */
+        for (uint32_t c = 0; c < spp; c++) {
+            double sum = 0; int cnt = 0;
+            for (uint32_t k = c; k < rr * rc * spp && k < bl->count; k += spp) { sum += tiff_num(t, bl, k); cnt++; }
+            raw->black[c] = cnt ? sum / cnt : 0;
+        }
+    } else if (bl && rr && rc && rr <= 16 && rc <= 16) {
         for (int y = 0; y < 2; y++) for (int x = 0; x < 2; x++) {
             /* Average all repeat cells that share this CFA parity. */
             double sum = 0; int cnt = 0;

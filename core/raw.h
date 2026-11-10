@@ -2,18 +2,22 @@
 #define IRCONV_RAW_H
 #include "tiff.h"
 
+#define APP_NAME "IR Converter"
 enum { RAW_NEF = 1, RAW_DNG = 2 };
 enum { WARN_CAMERA_UNKNOWN = 1, WARN_NO_WB = 2 };
 
-/* A Bayer raw image with everything the renderer and the DNG writer need.
- * Colour indices: 0 = red, 1 = green, 2 = blue. cfa[] is relative to the
- * buffer origin: colour at (y, x) = cfa[(y & 1) * 2 + (x & 1)]. */
+/* A raw image with everything the renderer and the DNG writer need: a Bayer
+ * mosaic (spp = 1) or a linear DNG's demosaiced camera RGB (spp = 3, samples
+ * interleaved). Colour indices: 0 = red, 1 = green, 2 = blue. cfa[] (Bayer
+ * only) is relative to the buffer origin: colour at (y, x) =
+ * cfa[(y & 1) * 2 + (x & 1)]. */
 typedef struct {
     int kind;
     uint32_t width, height;
-    uint16_t *data;                   /* raw codes, width * height */
+    int spp;                          /* samples per pixel: 1 Bayer, 3 linear RGB */
+    uint16_t *data;                   /* raw codes, width * height * spp */
     uint16_t *lin; uint32_t lin_n;    /* linearisation table (optional) */
-    double black[4];                  /* per CFA position (buffer parity) */
+    double black[4];                  /* per CFA position (buffer parity); linear: per sample */
     double *black_h, *black_v;        /* DNG BlackLevelDeltaH/V (active area columns/rows) */
     double white;
     int cfa[4];

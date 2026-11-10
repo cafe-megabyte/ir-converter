@@ -121,6 +121,7 @@ int nef_load(Raw *raw, const Tiff *t) {
     Tiff mn = {0};
     if (!mne || mne->size < 18 || xmemcmp(mne->data, "Nikon\0", 6) || tiff_parse(&mn, mne->data + 10, mne->size - 10))
         return ERR_UNSUPPORTED | (UNSUP_COMPRESSION << 8);
+    raw->spp = 1;
     raw->nikon_mn = mne->data; raw->nikon_mn_len = mne->size;
     raw->nikon_mn_be = mn.be;
     raw->nikon_mn_offset = (uint32_t)(mne->data - t->base);

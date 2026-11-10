@@ -4,7 +4,7 @@
 
 #define EXPORT
 
-EXPORT uint32_t abi_version(void) { return 2; }
+EXPORT uint32_t abi_version(void) { return 4; }
 EXPORT uint32_t mem_alloc(uint32_t size) { return (uint32_t)(uintptr_t)xalloc(size); }
 EXPORT void mem_release(uint32_t ptr) { xfree((void *)(uintptr_t)ptr); }
 
@@ -26,8 +26,12 @@ EXPORT int image_name_set(uint32_t ptr, uint32_t len) {
     xmemcpy(S.name, (const void *)(uintptr_t)ptr, n); S.name[n] = 0;
     return 0;
 }
-EXPORT int image_swap_set(int on) { return engine_set_swap(on); }
+/* Swap mode: 0 none, 1 in the raw data, 2 after development. */
+EXPORT int image_swap_set(int mode) { return engine_set_swap(mode); }
 EXPORT int image_swap(void) { return S.swap; }
+/* Output space of the swap after development: 0 sRGB, 1 Display P3, 2 Adobe RGB. */
+EXPORT int image_space_set(int space) { return engine_set_space(space); }
+EXPORT int image_space(void) { return S.space; }
 EXPORT int image_temperature_set(double t) { return engine_set_temperature(t); }
 EXPORT double image_temperature(void) { return S.temp; }
 EXPORT double image_as_shot_temperature(void) { return S.t0; }
@@ -36,6 +40,11 @@ EXPORT int image_white_reset(void) { return engine_reset_white(); }
 EXPORT int view_render(uint32_t maxw, uint32_t maxh) { return engine_render_view(maxw, maxh, 0); }
 /* Display P3, extended range: RGBA half floats (8 bytes per pixel). */
 EXPORT int view_render_hdr(uint32_t maxw, uint32_t maxh) { return engine_render_view(maxw, maxh, 1); }
+/* Zoomed view: rectangle (x, y, w, h) of the oriented image, at most
+ * (outw, outh) pixels and at most its own size. */
+EXPORT int view_render_region(double x, double y, double w, double h, uint32_t outw, uint32_t outh, int hdr) {
+    return engine_render_region(x, y, w, h, outw, outh, hdr);
+}
 EXPORT uint32_t view_address(void) { return (uint32_t)(uintptr_t)S.view; }
 EXPORT uint32_t view_width(void) { return S.view_w; }
 EXPORT uint32_t view_height(void) { return S.view_h; }

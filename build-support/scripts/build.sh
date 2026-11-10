@@ -116,6 +116,8 @@ mkdir -p "$INTERNAL/state" "$INTERNAL/host-tools" "$INTERNAL/tests" "$INTERNAL/g
 DESCRIPTOR="$INTERNAL/tmp/compiler-state"
 { "$CC" --version; printf '%s\n' "$CC" "$SDK"; /usr/bin/stat -f '%z %m' "$CC"; cat "$SDK/SDKSettings.json"; } > "$DESCRIPTOR"
 ICC_SOURCE='/System/Library/ColorSync/Profiles/sRGB Profile.icc'
+ICC_P3_SOURCE='/System/Library/ColorSync/Profiles/Display P3.icc'
+ICC_ADOBE_SOURCE='/System/Library/ColorSync/Profiles/AdobeRGB1998.icc'
 snapshot() {
     SNAP="$INTERNAL/tmp/$1-inputs"
     rm -rf "$SNAP"; mkdir -p "$SNAP"
@@ -161,12 +163,18 @@ build_linker() {
         /usr/bin/make CC="\"$CC\"" OPTIMIZE=-O2 LDFLAGS="--ld-path=\"$LD\"" wcc) > "$INTERNAL/logs/xcc.log" 2>&1 || { cat "$INTERNAL/logs/xcc.log" >&2; exit 1; }
     remember linker
 }
-# The unmodified macOS sRGB ICC profile is embedded into exported JPEGs.
+# The unmodified macOS ICC profiles (sRGB, Display P3, Adobe RGB) are embedded
+# into exported JPEGs; their colorants also define the output colour spaces.
+generate_one_icc() {
+    [ -f "$1" ] || { echo "Missing $1" >&2; exit 1; }
+    cp "$1" "$INTERNAL/tmp/$2.icc"
+    (cd "$INTERNAL/tmp" && /usr/bin/xxd -i -n "$2" "$2.icc") > "$INTERNAL/gen/$2.h.tmp"
+    mv "$INTERNAL/gen/$2.h.tmp" "$INTERNAL/gen/$2.h"
+}
 generate_sources() {
-    [ -f "$ICC_SOURCE" ] || { echo "Missing $ICC_SOURCE" >&2; exit 1; }
-    cp "$ICC_SOURCE" "$INTERNAL/tmp/srgb.icc"
-    (cd "$INTERNAL/tmp" && /usr/bin/xxd -i -n srgb_icc srgb.icc) > "$INTERNAL/gen/srgb_icc.h.tmp"
-    mv "$INTERNAL/gen/srgb_icc.h.tmp" "$INTERNAL/gen/srgb_icc.h"
+    generate_one_icc "$ICC_SOURCE" srgb_icc
+    generate_one_icc "$ICC_P3_SOURCE" p3_icc
+    generate_one_icc "$ICC_ADOBE_SOURCE" adobergb_icc
 }
 WEB_FILES='app.js app.css worker.js'
 build_web() {
@@ -177,7 +185,7 @@ build_web() {
     generate_sources
     snapshot web core web assets build-support/patches/xcc-host-only.patch build-support/tools/package-check.m build-support/tools/site-assets.m build-support/tools/js-runner.m tests/wasm-smoke.js vendor/SOURCE_ARCHIVES.md
     cp "$INTERNAL/state/linker/archive" "$SNAP/linker-archive"
-    cp "$INTERNAL/gen/srgb_icc.h" "$SNAP/srgb_icc.h"
+    for ICC_HEADER in srgb_icc p3_icc adobergb_icc; do cp "$INTERNAL/gen/$ICC_HEADER.h" "$SNAP/$ICC_HEADER.h"; done
     if [ ! -d build/web ] && [ -d "$INTERNAL/web/previous" ]; then mv "$INTERNAL/web/previous" build/web; fi
     if [ -f build/web/index.html ] && unchanged web && "$INTERNAL/host-tools/package-check" build/web; then echo 'Web app is current.'; return; fi
     WEB_SNAP=$SNAP

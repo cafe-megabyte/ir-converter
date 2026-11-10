@@ -2,7 +2,7 @@
 // while a frame is computed, only the newest slider position is kept.
 'use strict';
 let wasm, ready;
-let viewW = 1024, viewH = 768, viewHdr = false, dirty = false, scheduled = false, open = false;
+let viewW = 1024, viewH = 768, viewHdr = false, viewRegion = null, dirty = false, scheduled = false, open = false;
 
 function bytes() { return new Uint8Array(wasm.memory.buffer); }
 function cString(ptr) {
@@ -13,7 +13,7 @@ function cString(ptr) {
 function info() {
   return {
     width: wasm.image_width(), height: wasm.image_height(), kind: wasm.image_kind(),
-    camera: cString(wasm.image_camera()), warnings: wasm.image_warnings(), swap: wasm.image_swap(),
+    camera: cString(wasm.image_camera()), warnings: wasm.image_warnings(), swap: wasm.image_swap(), space: wasm.image_space(),
     temperature: wasm.image_temperature(), asShot: wasm.image_as_shot_temperature()
   };
 }
@@ -27,19 +27,20 @@ function render() {
   scheduled = false;
   if (!dirty || !open) return;
   dirty = false;
-  const hdr = viewHdr;
-  const r = hdr ? wasm.view_render_hdr(viewW, viewH) : wasm.view_render(viewW, viewH);
+  const hdr = viewHdr, region = viewRegion || [0, 0, wasm.image_width(), wasm.image_height()];
+  const r = viewRegion ? wasm.view_render_region(...region, viewW, viewH, hdr ? 1 : 0)
+    : hdr ? wasm.view_render_hdr(viewW, viewH) : wasm.view_render(viewW, viewH);
   if (r) { postMessage({type: 'error', code: r, detail: 0}); return; }
   const w = wasm.view_width(), h = wasm.view_height(), ptr = wasm.view_address();
   const pixels = bytes().slice(ptr, ptr + w * h * (hdr ? 8 : 4));
-  postMessage({type: 'frame', width: w, height: h, hdr, temperature: wasm.image_temperature(), buffer: pixels.buffer}, [pixels.buffer]);
+  postMessage({type: 'frame', width: w, height: h, hdr, region, temperature: wasm.image_temperature(), buffer: pixels.buffer}, [pixels.buffer]);
 }
 
 async function init(url) {
   const response = await fetch(url);
   const {instance} = await WebAssembly.instantiate(await response.arrayBuffer(), {});
   wasm = instance.exports;
-  if (wasm.abi_version() !== 2) throw new Error('Engine version mismatch');
+  if (wasm.abi_version() !== 4) throw new Error('Engine version mismatch');
 }
 
 self.onmessage = async ({data}) => {
@@ -48,7 +49,7 @@ self.onmessage = async ({data}) => {
     await ready;
     switch (data.type) {
     case 'open': {
-      open = false;
+      open = false; viewRegion = null;
       wasm.image_close();
       const src = new Uint8Array(data.buffer);
       const ptr = wasm.mem_alloc(src.length);
@@ -67,10 +68,13 @@ self.onmessage = async ({data}) => {
     case 'view':
       viewW = Math.max(16, Math.min(2048, data.width | 0)); viewH = Math.max(16, Math.min(2048, data.height | 0));
       viewHdr = !!data.hdr;
+      // Zoomed: rectangle [x, y, w, h] of the oriented image; null for the whole image.
+      viewRegion = Array.isArray(data.region) && data.region.length === 4 && data.region.every(Number.isFinite) ? data.region : null;
       schedule();
       break;
-    case 'swap': {
-      const r = wasm.image_swap_set(data.on ? 1 : 0);
+    case 'swap':
+    case 'space': {
+      const r = data.type === 'swap' ? wasm.image_swap_set(data.mode) : wasm.image_space_set(data.space);
       if (r) { postMessage({type: 'error', code: r, detail: 0}); return; }
       postMessage({type: 'state', info: info()});
       schedule();

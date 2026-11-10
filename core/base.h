@@ -17,7 +17,7 @@ enum {
 enum {
     UNSUP_NONE = 0,
     UNSUP_COMPRESSION = 1, /* e.g. lossy/JPEG XL DNG or Nikon HE/HE* */
-    UNSUP_LINEAR_RAW = 2,  /* demosaiced (linear) DNG */
+    UNSUP_LINEAR_RAW = 2,  /* linear DNG other than three-sample camera RGB */
     UNSUP_CFA = 3,         /* not a 2x2 RGB Bayer pattern */
     UNSUP_LAYOUT = 4,      /* planar, multi-sample or unusual bit depth */
     UNSUP_NO_RAW = 5       /* no raw image found */

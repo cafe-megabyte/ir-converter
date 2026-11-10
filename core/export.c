@@ -1,9 +1,13 @@
 /* Exports: lossless DNG (raw data bit-exact; white balance, embedded profile
- * and previews updated) and full-resolution JPEG. */
+ * and previews updated) and full-resolution JPEG.
+ *
+ * Swap modes in the DNG: SWAP_RAW rewrites the CFA pattern (a linear DNG
+ * keeps its samples; the exchange goes into neutral and matrices). SWAP_POST
+ * keeps the photosites as they are; the red/blue exchange in the output space
+ * is a linear map on XYZ and is folded into ForwardMatrix and ColorMatrix, so
+ * the raw data stays unchanged and the embedded profile renders the swap. */
 #include "raw.h"
-#include "srgb_icc.h"
 
-#define APP_NAME "IR Converter"
 #define APP_VERSION "1.0"
 #define PREVIEW_QUALITY 85
 #define JPEG_QUALITY 75
@@ -80,17 +84,30 @@ static void set_xmp(Tiff *t, TiffIfd *i0) {
 }
 
 /* ---- profile: AsShotNeutral, scaled colour matrices, fixed forward matrix ---- */
+/* A red/blue exchange carried by the profile (SWAP_POST, and the raw swap of
+ * a linear DNG) must be in ColorMatrix as well as in ForwardMatrix: Adobe
+ * renders with ForwardMatrix, Apple's raw engine with ColorMatrix only. The
+ * exchange becomes factors around ColorMatrix (XYZ -> file camera RGB):
+ * cm_file = l * cm * r. */
+static void profile_exchange(M3 *l, M3 *r) {
+    *l = *r = m3_diag((double[3]){1, 1, 1});
+    if (S.swap == SWAP_POST) *r = swap_in_space(S.space);
+    else if (S.swap == SWAP_RAW && !file_order_swapped()) *l = PERM_RB;
+}
 static void set_profile(Tiff *t, TiffIfd *i0) {
     const Raw *r = &S.raw;
-    double x, y, ref_xyz[3];
+    double x, y, ref_xyz[3], n[3];
+    M3 p = file_pcs(n);          /* neutral and colour matrix in the file's channel order */
     temp_xy(5000, 0, &x, &y);
     xy_to_xyz(x, y, ref_xyz);
-    M3 ab = m3_diag(r->ab);
+    M3 ab = m3_diag(r->ab), xl, xr;
+    profile_exchange(&xl, &xr);
     for (int s = 0; s < r->n_ill; s++) {
-        M3 cm = m3_from(r->cm[s]), cc = m3_from(r->cc[s]), abcc = m3_mul(&ab, &cc), inv;
+        M3 cm0 = m3_from(r->cm[s]), cl = m3_mul(&xl, &cm0), cm = m3_mul(&cl, &xr);
+        M3 cc = m3_from(r->cc[s]), abcc = m3_mul(&ab, &cc), inv;
         if (!m3_inv(&abcc, &inv)) inv = m3_diag((double[3]){1, 1, 1});
         double ref[3], cam[3];
-        m3_vec(&inv, S.n, ref);
+        m3_vec(&inv, n, ref);
         m3_vec(&cm, ref_xyz, cam);
         double k[3];
         for (int i = 0; i < 3; i++) k[i] = cam[i] > 1e-12 && ref[i] > 0 ? ref[i] / cam[i] : 1;
@@ -98,15 +115,14 @@ static void set_profile(Tiff *t, TiffIfd *i0) {
         tiff_set_srational(t, i0, (uint16_t)(0xC621 + s), out.m, 9);
     }
     /* Forward matrix reproducing exactly our rendering for AsShotNeutral. */
-    M3 p = camera_to_pcs(&S.prof, S.n, S.temp, S.d0);
     double g = weight(&S.prof, 5000);
     M3 abcc = S.prof.n < 2 ? S.prof.abcc[0] : lerp(&S.prof.abcc[0], &S.prof.abcc[1], g), inv;
     if (!m3_inv(&abcc, &inv)) inv = m3_diag((double[3]){1, 1, 1});
-    double ref[3], invn[3] = {1 / S.n[0], 1 / S.n[1], 1 / S.n[2]};
-    m3_vec(&inv, S.n, ref);
+    double ref[3], invn[3] = {1 / n[0], 1 / n[1], 1 / n[2]};
+    m3_vec(&inv, n, ref);
     M3 a = m3_diag(invn), b = m3_diag(ref), t1 = m3_mul(&p, &a), t2 = m3_mul(&t1, &abcc), fm = m3_mul(&t2, &b);
     for (int s = 0; s < r->n_ill; s++) tiff_set_srational(t, i0, (uint16_t)(0xC714 + s), fm.m, 9);
-    tiff_set_rational(t, i0, 0xC628, S.n, 3);
+    tiff_set_rational(t, i0, 0xC628, n, 3);
     tiff_remove(i0, 0xC629);                      /* AsShotWhiteXY */
     tiff_set_ascii(t, i0, 0xC6F8, APP_NAME);      /* ProfileName */
     tiff_remove(i0, 0xC6F6);                      /* AsShotProfileName */
@@ -200,7 +216,7 @@ static int export_from_dng(void) {
     for (uint32_t i = 0; !raw && i < norig; i++)
         if (tiff_get_uint(&t, orig[i], 0x00FE, 1) == 0) raw = orig[i];
     if (!raw) { tiff_free(&t); return ERR_FORMAT; }
-    if (S.swap) swap_cfa_entry(&t, raw);
+    if (file_order_swapped()) swap_cfa_entry(&t, raw);
     set_profile(&t, i0);
     set_xmp(&t, i0);
     if (tiff_find(i0, 0xC716)) set_preview_info(&t, i0);
@@ -211,8 +227,9 @@ static int export_from_dng(void) {
             TiffIfd *s = orig[i];
             uint32_t type = tiff_get_uint(&t, s, 0x00FE, 0), ph = tiff_get_uint(&t, s, 0x0106, 0);
             /* Reduced-resolution raw proxies (DNG 1.7 fast-load data) hold
-             * unswapped camera RGB; with the swap they would be wrong. */
-            if (S.swap && type == 1 && (ph == 34892 || ph == 32803)) continue;
+             * unswapped camera RGB; with the raw swap they would be wrong.
+             * With SWAP_POST they follow the profile like the raw data. */
+            if (file_order_swapped() && type == 1 && (ph == 34892 || ph == 32803)) continue;
             if (is_rendered(&t, s)) { r = replace_preview(&t, s, &keep, is_plain_rgb(&t, s)); set_preview_info(&t, s); }
             list[n++] = s;
         }
@@ -358,7 +375,7 @@ static int export_from_nef(void) {
     static const uint16_t dim[2] = {2, 2};
     tiff_set_u16(&t, ri, 0x828D, dim, 2);
     uint8_t pat[4];
-    for (int i = 0; i < 4; i++) pat[i] = (uint8_t)(S.swap ? 2 - rw->cfa_aa[i] : rw->cfa_aa[i]);
+    for (int i = 0; i < 4; i++) pat[i] = (uint8_t)(file_order_swapped() ? 2 - rw->cfa_aa[i] : rw->cfa_aa[i]);
     tiff_set_raw(&t, ri, 0x828E, T_BYTE, 4, pat);
     static const uint8_t planes[3] = {0, 1, 2};
     tiff_set_raw(&t, ri, 0xC616, T_BYTE, 3, planes);
@@ -417,7 +434,7 @@ int engine_export_dng(void) {
 }
 
 /* ---- JPEG ---- */
-static int build_exif(Buf *out) {
+static int build_exif(Buf *out, int space) {
     Tiff t;
     int r = tiff_parse(&t, S.file, S.len);
     if (r) return r;
@@ -431,7 +448,7 @@ static int build_exif(Buf *out) {
     if (exif) {
         static const uint16_t drop[] = {0xA302, 0x9286, 0xA005, 0x0201, 0x0202};
         for (uint32_t i = 0; i < sizeof drop / sizeof drop[0]; i++) tiff_remove(exif, drop[i]);
-        tiff_set_short(&t, exif, 0xA001, 1);
+        tiff_set_short(&t, exif, 0xA001, space == SPACE_SRGB ? 1 : 0xFFFF);   /* 0xFFFF: see the ICC profile */
         tiff_set_long(&t, exif, 0xA002, S.raw.crop_w);
         tiff_set_long(&t, exif, 0xA003, S.raw.crop_h);
         tiff_set_subs(&t, d0, 0x8769, &exif, 1);
@@ -526,10 +543,26 @@ static void mpf_index(uint8_t *p, uint32_t primary_len, uint32_t gainmap_len, ui
     e = put32be(e, 0x030000); e = put32be(e, primary_len); e = put32be(e, 0); e += 4;   /* baseline primary */
     e = put32be(e, 0); e = put32be(e, gainmap_len); e = put32be(e, gainmap_offset);
 }
+/* Rendering for the JPEG: sRGB, or with SWAP_POST the chosen output space
+ * (same white balance, swap and tone; matrix and encoding of that space). */
+static Render jpeg_rp;
+static int jpeg_space(void) { return S.swap == SWAP_POST ? S.space : SPACE_SRGB; }
+static const Render *jpeg_render(void) {
+    int sp = jpeg_space();
+    if (sp == SPACE_SRGB) return &S.rp;
+    jpeg_rp = S.rp;
+    M3 to = xyz_to_space(sp), m = m3_mul(&to, &S.pcs);
+    double gain = m_pow(2.0, S.raw.baseline_exposure);
+    for (int i = 0; i < 9; i++) jpeg_rp.m[i] = (float)(m.m[i] * gain);
+    build_lut(&jpeg_rp, SPACES[sp].gamma563);
+    return &jpeg_rp;
+}
 int engine_export_jpeg(void) {
     if (!S.raw.data) return ERR_STATE;
     Buf exif = {0}, app = {0};
-    build_exif(&exif);
+    int sp = jpeg_space();
+    const Render *rp = jpeg_render();
+    build_exif(&exif, sp);
     Jpeg j;
     Full f = {0};
     uint32_t w = S.raw.crop_w, h = S.raw.crop_h, gw = (w + 1) / 2, gh = (h + 1) / 2;
@@ -537,7 +570,7 @@ int engine_export_jpeg(void) {
     uint8_t *rows = xalloc((size_t)w * 16 * 3), *codes = xalloc((size_t)w * 16), *gm = xalloc((size_t)gw * gh);
     char *xmp = NULL;
     if (!r && (!rows || !codes || !gm)) r = ERR_MEMORY;
-    if (!r) r = full_init(&f, &S.lin, &S.rp);
+    if (!r) r = full_init(&f, &S.lin, rp);
     if (!r) {
         /* Huffman statistics from every fourth MCU row, then encoding. */
         for (uint32_t y = 0; y < h; y += 64) {
@@ -557,7 +590,7 @@ int engine_export_jpeg(void) {
             primary_xmp(xmp, xmp_size, 0);
             jpeg_app(o, 1, xmp_id, sizeof xmp_id, xmp, xmp_size);
         }
-        jpeg_app(o, 2, "ICC_PROFILE\0\1\1", 14, srgb_icc, srgb_icc_len);
+        jpeg_app(o, 2, "ICC_PROFILE\0\1\1", 14, SPACES[sp].icc, SPACES[sp].icc_len);
         static const uint8_t iso_version[4] = {0, 0, 0, 0};
         jpeg_app(o, 2, iso_id, sizeof iso_id, iso_version, 4);
         uint8_t mpf[MPF_SIZE] = {0};

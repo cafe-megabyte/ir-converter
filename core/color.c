@@ -10,6 +10,9 @@
  * log(T) with the slope at the boundary: every T > 0 gives a distinct,
  * monotonically changing white balance, without any limit. */
 #include "raw.h"
+#include "srgb_icc.h"
+#include "p3_icc.h"
+#include "adobergb_icc.h"
 
 typedef struct { double m[9]; } M3;
 static const double D50[3] = {0.9642, 1.0, 0.8249};
@@ -234,4 +237,49 @@ static M3 xyz_to_rgb_primaries(const double *rx, const double *gx, const double 
 static M3 xyz_to_display_p3(void) {
     static const double r[2] = {0.680, 0.320}, g[2] = {0.265, 0.690}, b[2] = {0.150, 0.060}, w[2] = {0.3127, 0.3290};
     return xyz_to_rgb_primaries(r, g, b, w);
+}
+
+/* ---- output colour spaces, defined by the embedded ICC profiles ----
+ * The profiles are the unmodified macOS ones (matrix/TRC). Their colorants
+ * (D50) give the RGB <-> XYZ matrices; sRGB and Display P3 use the sRGB
+ * transfer curve, Adobe RGB a pure gamma of 563/256 (checked against the
+ * profiles' TRC tags in tests/core-check.c). */
+enum { SPACE_SRGB = 0, SPACE_P3 = 1, SPACE_ADOBE = 2, SPACE_COUNT = 3 };
+typedef struct { const uint8_t *icc; uint32_t icc_len; int gamma563; } OutSpace;
+static const OutSpace SPACES[SPACE_COUNT] = {
+    {srgb_icc, sizeof srgb_icc, 0}, {p3_icc, sizeof p3_icc, 0}, {adobergb_icc, sizeof adobergb_icc, 1}};
+
+/* Finds an ICC tag; returns its data or NULL. */
+static const uint8_t *icc_tag(const uint8_t *p, uint32_t n, const char *sig, uint32_t *size) {
+    if (n < 132) return NULL;
+    uint32_t count = rd32(p + 128, 1);
+    for (uint32_t i = 0; i < count && 132 + 12 * (i + 1) <= n; i++) {
+        const uint8_t *e = p + 132 + 12 * i;
+        uint32_t off = rd32(e + 4, 1), len = rd32(e + 8, 1);
+        if (!xmemcmp(e, sig, 4) && off <= n && len <= n - off) { *size = len; return p + off; }
+    }
+    return NULL;
+}
+/* Linear RGB -> XYZ (D50) from the rXYZ/gXYZ/bXYZ colorants. */
+static M3 space_to_xyz(int s) {
+    static const char *sig[3] = {"rXYZ", "gXYZ", "bXYZ"};
+    M3 m = {{0}};
+    for (int c = 0; c < 3; c++) {
+        uint32_t len = 0;
+        const uint8_t *d = icc_tag(SPACES[s].icc, SPACES[s].icc_len, sig[c], &len);
+        if (!d || len < 20) return m3_diag((double[3]){1, 1, 1});
+        for (int k = 0; k < 3; k++) m.m[k * 3 + c] = (int32_t)rd32(d + 8 + 4 * k, 1) / 65536.0;
+    }
+    return m;
+}
+static M3 xyz_to_space(int s) {
+    M3 m = space_to_xyz(s), inv;
+    if (!m3_inv(&m, &inv)) inv = m3_diag((double[3]){1, 1, 1});
+    return inv;
+}
+/* Exchange of red and blue in the linear RGB of space s, as a map on XYZ. */
+static M3 swap_in_space(int s) {
+    static const M3 perm = {{0, 0, 1, 0, 1, 0, 1, 0, 0}};
+    M3 to = xyz_to_space(s), from = space_to_xyz(s), a = m3_mul(&perm, &to);
+    return m3_mul(&from, &a);
 }

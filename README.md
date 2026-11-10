@@ -1,9 +1,10 @@
 # IR Converter
 
 A raw converter for **infrared photography**, running entirely in the browser.
-It reads **NEF** (Nikon) and **DNG**, swaps red and blue directly in the raw data,
-offers a white balance **without any temperature limit** with a live preview, and saves
-**lossless DNG** and **JPEG**. Everything is computed locally in C/WebAssembly; there is
+It reads **NEF** (Nikon) and **DNG** (Bayer and linear), swaps red and blue either
+after development (like a channel mixer) or directly in the raw data, offers a white
+balance **without any temperature limit** with a live preview, and saves **lossless DNG**
+and **JPEG**. Everything is computed locally in C/WebAssembly; there is
 no server interaction. After the first visit the app works offline and can be installed
 as an app; installed copies update themselves.
 
@@ -13,7 +14,7 @@ as an app; installed copies update themselves.
 </p>
 
 *Nikon D90, rendered by IR Converter. Left: as shot (1767 K). Right: red/blue
-swapped, 6500 K.*
+swapped in the raw data, 6500 K.*
 
 ## Why
 
@@ -29,7 +30,18 @@ open as shot. The workaround profile is created automatically.
 ## Use
 
 - **Open** a file, or drop it onto the window.
-- **Swap red/blue:** the swap happens in the raw data, before white balance.
+- **Red/blue swap:** *No swap*, *Swap in raw* (the default; before white balance and
+  colour matrix) or *Swap after development*, which exchanges red and blue of the developed
+  image in **sRGB**, **Display P3** or **Adobe RGB**. That space starts as the camera's
+  colour space setting (Adobe RGB if the camera was set to it, otherwise sRGB), and the
+  JPG is saved in it. The **i** button next to it explains the chosen mode. Both swaps
+  use the same temperature scale, so switching between them keeps the white balance.
+  Switching never moves or resizes the image, so modes can be compared directly.
+  DNGs written by IR Converter already contain their swap and open with *No swap*.
+- **Zoom:** pinch with two fingers or on the trackpad, or use the mouse wheel; drag to
+  pan. A double click or double tap switches between the whole image and the largest
+  zoom (one image pixel per CSS pixel, at least two screen pixels). Zooming only affects
+  the preview; DNG and JPG always contain the whole image.
 - **Temperature:** the slider covers ×¼ to ×4 of the current value and re-centres
   whenever you release it, so it has no end stop. The field next to it accepts any value
   above 0 K, for example `350`, `0.5`, `120k`. **As shot** restores the value from the file.
@@ -56,9 +68,9 @@ Apple Clang compiles C to `wasm32`. The only other tool is the small WebAssembly
 source archive and built at the start of the first `make`; see
 [vendor/SOURCE_ARCHIVES.md](vendor/SOURCE_ARCHIVES.md). No Node, Emscripten, CMake or Rust.
 
-`make check` uses sample files in `samples/`, which are not part of the repository:
-`DSC_0080.NEF` and `DSC_0080.DNG`, the same NEF converted by Adobe DNG Converter.
-Without them, only the checks that need no sample files run.
+`make check` uses one sample photo, `samples/DSC_0080.NEF` (Nikon D90), which is not
+part of the repository. Without it, only the checks that need no sample file run. The
+DNG checks use the NEF's own DNG export as their source.
 
 ## Deploy
 
@@ -78,7 +90,26 @@ screen.
 On a Bayer sensor the CFA pattern is rewritten (e.g. GBRG → GRBG), so red photosites
 become blue and vice versa. Sensor data stays bit-exact, every raw converter honours it,
 and the swap precedes white balance and colour matrices. Hues therefore differ slightly
-from a channel swap in sRGB (e.g. Photoshop's channel mixer).
+from a channel swap after development. A linear DNG has no CFA pattern: its samples stay
+as they are, and the exchange goes into the profile (see below).
+
+### Red/blue swap after development
+The image is developed normally and red and blue of the result are exchanged in the
+chosen output space, like Photoshop's channel mixer in a document of that space. The
+result depends on the space, because “red” and “blue” are that space's primaries; neutral
+tones are the same in all of them. sRGB stays close to the raw swap; wider spaces shift
+blues towards cyan. The primaries come from the embedded macOS ICC profiles.
+
+Internally both swaps hold the photosites exchanged and share the temperature scale.
+After development, the colour matrix is the one of normal development for the physical
+white balance, followed by the exchange, which is a linear map on XYZ.
+
+In the DNG the raw data stays unswapped and bit-exact. The exchange is folded into the
+embedded profile, in both `ForwardMatrix` (which Adobe renders with) and `ColorMatrix`
+(which Apple's raw engine renders with), so both show the swapped colours. Camera Raw and
+Lightroom render with their own tone handling, so colours there are close but not
+identical, and their temperature slider then acts on unswapped data, i.e. in the
+opposite visual direction.
 
 ### Unbounded temperature
 Between 1000 K and 15000 K the scale is physical: the Planckian locus after Krystek (1985)
@@ -89,24 +120,28 @@ neutral therefore continues log-linearly in log(T). Every value above 0 K is dis
 monotonic. The start value reproduces the file's white balance exactly; the tint is kept.
 
 ### Lossless DNG export
-- **Raw data stays bit-exact.** DNG tiles are copied unchanged. NEF data is decompressed
-  and stored as lossless JPEG, with the NEF curve as `LinearizationTable`.
+- **Raw data stays bit-exact.** DNG tiles (Bayer or linear) are copied unchanged. NEF
+  data is decompressed and stored as lossless JPEG, with the NEF curve as
+  `LinearizationTable`.
 - `AsShotNeutral` holds the chosen white balance.
 - **Embedded profile “IR Converter”** (the `.dcp` trick, automated):
   - `ColorMatrix` is scaled so this white point reads about 5000 K in Camera Raw and
     Lightroom, so their slider starts mid-range.
   - `ForwardMatrix` reproduces the app's colours exactly according to the DNG
-    specification.
+    specification; reopened exports render the same in every swap mode.
   - The XMP sets `crd:CameraProfile="IR Converter"` and drops stored WB/profile settings.
 - **Previews:** every embedded preview is re-rendered at its original size. None is
   added if there was none. NEF imports keep the NEF's preview sizes.
 - **Fast-load proxies** (DNG 1.7, JPEG XL) hold camera RGB and follow the new white
-  balance on their own. They are kept, except with the swap, where they are removed.
+  balance and profile on their own. They are kept, except with the swap in the raw data
+  of a Bayer image, where they are removed.
 - The Nikon MakerNote is kept as `DNGPrivateData`; EXIF and GPS are preserved.
 
 ### JPEG export
-Full resolution (Malvar-He-Cutler demosaicing), quality 75, 4:2:0, sRGB with the
-embedded macOS sRGB ICC profile, EXIF preserved, orientation as EXIF tag.
+Full resolution (Malvar-He-Cutler demosaicing; linear DNGs are already demosaiced),
+quality 75, 4:2:0, EXIF preserved, orientation as EXIF tag. Colour space: sRGB, or with
+the swap after development the chosen space (sRGB, Display P3 or Adobe RGB), always with
+the unmodified macOS ICC profile embedded. The tone curve is the same in every space.
 
 The JPEG is also an **HDR photo with a gain map**. The main image is the ordinary SDR
 JPEG, so every viewer shows it as before. Behind it, in an MPF container, follows a
@@ -116,6 +151,12 @@ preview (up to 3×). It is described twice:
 - **Ultra HDR XMP** (Adobe gain map): Android, Chrome.
 
 Viewers use as much of the gain as the display's headroom allows.
+
+### Preview and zoom
+The whole image is previewed from 2×2 superpixels (at most half resolution). A zoomed
+view renders only the visible rectangle: down to half size again from superpixels,
+larger with the JPEG's demosaicing, so at 1:1 it equals the JPEG pixel for pixel. That
+demosaicing works on white-balanced data and is repeated for every change.
 
 ### HDR preview
 On HDR displays the preview uses an extended-range WebGPU canvas
@@ -131,26 +172,35 @@ shows “HDR” when it is active.
     `ForwardMatrix1/2`, `DefaultCrop*`, `ActiveArea`, `WhiteLevel` and
     `BaselineExposure`.
   - Unknown models open with a warning and approximate colours.
-- **DNG:** Bayer CFA, uncompressed or lossless JPEG, tiles or strips.
+- **DNG:** Bayer CFA or linear (demosaiced, three samples of camera RGB), uncompressed
+  or lossless JPEG, tiles or strips.
 - **Not supported** (with a message): lossy or JPEG XL compressed raw data in DNG,
-  linear (demosaiced) DNG, Nikon “High Efficiency” (TicoRAW), non-Bayer sensors.
+  linear DNGs with other than three samples, Nikon “High Efficiency” (TicoRAW),
+  non-Bayer sensors.
 
-NEF raw values are bit-identical to Adobe DNG Converter's. The NEF curve is interpolated
-as in dcraw/LibRaw. Adobe interpolates slightly differently, which shifts tonal values
-by up to about 1 %; the raw values themselves are the same.
+NEF raw values are bit-identical to Adobe DNG Converter's (compared once for the
+sample). The NEF curve is interpolated as in dcraw/LibRaw. Adobe interpolates slightly
+differently, which shifts tonal values by up to about 1 %; the raw values themselves
+are the same.
 
 ## Checks
 
 - `tests/core-check.c` covers:
-  - decoders against Adobe DNG Converter;
   - temperature round trips from 10 K to 10⁶ K, and monotonicity from 1 K to 10⁹ K;
-  - DNG export from the DNG and the NEF, each with and without swap: bit-exact raw data,
-    CFA pattern, neutral, preview sizes and proxies;
-  - JPEG export and the HDR preview.
+  - DNG export from the NEF and from a DNG (the NEF's own export) in every swap mode:
+    bit-exact raw data, NEF curve, CFA pattern, neutral, preview sizes, and that a
+    reopened export renders the same;
+  - the transfer curves of the embedded ICC profiles and the red/blue exchange per space;
+  - JPEG export in every output space (embedded profile) and the HDR preview;
+  - zoomed views: at 1:1 equal to the JPEG pipeline in all eight orientations.
+
+  Not covered automatically: linear DNGs, fast-load proxies and DNGs from other
+  converters. The NEF decoder was compared once with Adobe DNG Converter (see below).
 - `tests/wasm-check.js` runs the same steps with `engine.wasm` in JavaScriptCore. DNG,
-  JPEG and both previews must be byte-identical to the native build.
+  JPEG and the previews (including zoomed ones) must be byte-identical to the native build.
 - `raw-reference` opens the exported DNGs with Apple's raw engine (ImageIO) and compares
-  their colours with IR Converter's. For the JPEGs it checks:
+  their colours with IR Converter's, including both swaps. For the JPEGs it checks:
+  - the expected ICC profile;
   - the MPF index and the Ultra HDR XMP;
   - that ImageIO finds the ISO gain map;
   - that Core Image's HDR decode equals the SDR image times a gain between 1 and 3.

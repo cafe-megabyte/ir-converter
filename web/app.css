@@ -12,8 +12,12 @@
   /* colours of the icon: glowing palm, light and deep sky */
   background: linear-gradient(90deg, #f4faff, #81bae8 55%, #4a8ad6); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .meta { flex: 1; color: var(--muted); font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.stage { position: relative; min-height: 0; overflow: hidden; }
-.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.stage { position: relative; min-height: 0; overflow: hidden; touch-action: none; }
+.stage.zoomed { cursor: grab; }
+.stage.zoomed:active { cursor: grabbing; }
+/* placed by app.js: the frame's image rectangle at the current zoom */
+.stage canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.stage canvas.pixels { image-rendering: pixelated; }
 .empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center; padding: 24px; gap: 4px; }
 .empty .drop { font-size: 17px; margin: 0; }
@@ -44,17 +48,31 @@
 .msg[data-kind="error"] { color: var(--accent); }
 .msg[data-kind="warn"] { color: var(--warn); }
 .msg[data-kind="ok"] { color: var(--ok); }
-.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
-.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.switch .track { width: 40px; height: 22px; border-radius: 11px; background: #3a3d44; position: relative; transition: background .15s; flex: none; }
-.switch .knob { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
-  background: #fff; transition: transform .15s; }
-.switch input:checked + .track { background: linear-gradient(90deg, var(--accent2), var(--accent)); }
-.switch input:checked + .track .knob { transform: translateX(18px); }
-.switch input:focus-visible + .track { outline: 2px solid var(--accent2); outline-offset: 2px; }
-.switch input:disabled + .track { opacity: .45; }
+.seg { display: inline-grid; grid-auto-flow: column; border: 1px solid var(--line); border-radius: 8px;
+  overflow: hidden; max-width: 100%; }
+.seg button { font: inherit; font-size: 14px; line-height: 1.25; color: var(--text); background: #26282e; border: 0;
+  border-right: 1px solid var(--line); padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+.seg button:last-child { border-right: 0; }
+.seg button:hover:not(:disabled):not(.on) { background: #30333a; }
+/* the sky of the icon, deep at the top and lighter towards the horizon */
+.seg button.on { background: linear-gradient(180deg, #1c3f97, #2f6bc8 70%, #4a8ad6); color: #f4faff; }
+.seg button:disabled { opacity: .45; cursor: default; }
+.seg button:focus-visible { outline: 2px solid #81bae8; outline-offset: -2px; }
+.info { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: #26282e;
+  color: var(--text); font: italic 600 15px/1 Georgia, "Times New Roman", serif; cursor: pointer; padding: 0; }
+@media (hover: hover) { .info:hover:not(.on) { background: #30333a; } }
+.info.on { color: #f4faff; background: linear-gradient(180deg, #1c3f97, #2f6bc8 70%, #4a8ad6); border-color: #2f6bc8; }
+.info:focus-visible { outline: 2px solid #81bae8; outline-offset: 2px; }
+.tip { position: absolute; left: 12px; bottom: 12px; right: 12px; max-width: 34em; margin: 0; padding: 10px 12px;
+  background: rgba(26, 27, 31, .94); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 24px rgba(0, 0, 0, .45);
+  font-size: 13px; line-height: 1.45; color: var(--text); -webkit-user-select: text; user-select: text; }
+.tip[hidden] { display: none; }
+.actions .msg { min-height: 1.4em; }
 @media (max-width: 560px) {
   .temp .label { min-width: 0; width: 100%; }
+  .seg { width: 100%; grid-auto-columns: 1fr; }
+  .seg[data-ref="space"] { width: auto; flex: 1; }
+  .seg button { white-space: normal; padding: 6px 6px; }
   .asshot { margin-left: 0; width: 100%; }
   .actions .btn { flex: 1; justify-content: center; }
 }

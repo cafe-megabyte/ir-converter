@@ -2,7 +2,7 @@
 (async () => {
   const {instance} = await WebAssembly.instantiate(moduleBytes, {});
   const e = instance.exports;
-  if (e.abi_version() !== 2) throw new Error('ABI version');
+  if (e.abi_version() !== 4) throw new Error('ABI version');
   const junk = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   const p = e.mem_alloc(junk.length);
   new Uint8Array(e.memory.buffer).set(junk, p);

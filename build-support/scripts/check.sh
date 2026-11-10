@@ -7,11 +7,12 @@ mkdir -p "$INTERNAL/tests"
 "$CC" -O2 -ffp-contract=off -std=c11 -Wall -Wextra -Werror -isysroot "$SDK" --ld-path="$LD" \
     -I "$INTERNAL/gen" tests/core-check.c -o "$INTERNAL/tests/core-check"
 "$INTERNAL/tests/core-check"
-if [ -f samples/DSC_0080.NEF ] && [ -f samples/DSC_0080.DNG ]; then
+if [ -f samples/DSC_0080.NEF ]; then
     "$INTERNAL/host-tools/js-runner" "$INTERNAL/wasm/engine.wasm" tests/wasm-check.js
-    "$INTERNAL/host-tools/raw-reference" \
-        "$INTERNAL/tests/DNG-plain.dng" "$INTERNAL/tests/DNG-plain.jpg" \
-        "$INTERNAL/tests/DNG-swap.dng" "$INTERNAL/tests/DNG-swap.jpg"
+    set -- "$INTERNAL/tests/DNG-plain.dng" "$INTERNAL/tests/DNG-plain.jpg" sRGB \
+        "$INTERNAL/tests/DNG-swap.dng" "$INTERNAL/tests/DNG-swap.jpg" sRGB \
+        "$INTERNAL/tests/DNG-post.dng" "$INTERNAL/tests/DNG-post.jpg" 'Adobe RGB'
+    "$INTERNAL/host-tools/raw-reference" "$@"
 fi
 # Syntax of all web sources (module syntax stripped for a plain parse).
 for SOURCE in web/app.js web/worker.js web/service-worker.js; do

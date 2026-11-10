@@ -1,10 +1,12 @@
 // Independent check with Apple's RAW engine (ImageIO): every exported DNG
 // must open and render, and its colours must match our own rendering of the
-// same settings (JPEG) within a coarse tolerance. JPEGs must carry sRGB and
-// an HDR gain map: the MPF/Ultra HDR structure must be consistent, ImageIO
-// must find the ISO 21496-1 map, and Core Image's HDR decode must equal the
-// SDR image times a gain between 1 and 3.
-// Usage: raw-reference DNG JPEG [DNG JPEG ...]
+// same settings (JPEG) within a tolerance (mean chromaticity; it also catches
+// a red/blue swap that Apple does not render). Each JPEG must carry the ICC
+// profile whose name contains PROFILE (sRGB, Display P3, Adobe RGB) and an
+// HDR gain map: the MPF/Ultra HDR structure must be consistent, ImageIO must
+// find the ISO 21496-1 map, and Core Image's HDR decode must equal the SDR
+// image times a gain between 1 and 3.
+// Usage: raw-reference DNG JPEG PROFILE [DNG JPEG PROFILE ...]
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreImage/CoreImage.h>
@@ -116,22 +118,22 @@ static BOOL mean_rgb(NSString *path, double rgb[3], size_t *w, size_t *h, NSDict
 }
 int main(int argc, const char **argv) {
     @autoreleasepool {
-        if (argc < 3 || (argc - 1) % 2) return 2;
+        if (argc < 4 || (argc - 1) % 3) return 2;
         int failures = 0;
-        for (int i = 1; i + 1 < argc; i += 2) {
-            NSString *dng = @(argv[i]), *jpg = @(argv[i + 1]);
+        for (int i = 1; i + 2 < argc; i += 3) {
+            NSString *dng = @(argv[i]), *jpg = @(argv[i + 1]), *expected = @(argv[i + 2]);
             double a[3], b[3]; size_t aw, ah, bw, bh; NSDictionary *jp = nil;
             if (!mean_rgb(dng, a, &aw, &ah, NULL)) { printf("FAIL ImageIO cannot render %s\n", argv[i]); failures++; continue; }
             if (!mean_rgb(jpg, b, &bw, &bh, &jp)) { printf("FAIL ImageIO cannot decode %s\n", argv[i + 1]); failures++; continue; }
             NSString *profile = jp[(NSString *)kCGImagePropertyProfileName];
-            if (![profile containsString:@"sRGB"]) { printf("FAIL %s: profile %s\n", argv[i + 1], profile.UTF8String); failures++; }
+            if (![profile containsString:expected]) { printf("FAIL %s: profile %s, expected %s\n", argv[i + 1], profile.UTF8String, argv[i + 2]); failures++; }
             if (aw != bw || ah != bh) { printf("FAIL size %zux%zu vs %zux%zu\n", aw, ah, bw, bh); failures++; }
             if (!check_structure(jpg) || !check_hdr(jpg, bw, bh)) failures++;
             // Compare mean chromaticity (r, g, b shares), not brightness: tone
             // curves and gamut handling of the two renderers differ.
             double sa = a[0] + a[1] + a[2], sb = b[0] + b[1] + b[2], dist = 0;
             for (int c = 0; c < 3; c++) dist = fmax(dist, fabs(a[c] / sa - b[c] / sb));
-            BOOL ok = dist < 0.08;
+            BOOL ok = dist < 0.03;
             printf("%s %s: Apple RGB %.0f/%.0f/%.0f, IR Converter RGB %.0f/%.0f/%.0f (distance %.3f)\n", ok ? "ok  " : "FAIL",
                    dng.lastPathComponent.UTF8String, a[0], a[1], a[2], b[0], b[1], b[2], dist);
             if (!ok) failures++;
