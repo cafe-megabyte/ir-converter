@@ -69,7 +69,7 @@ static BOOL siteAssetsValid(NSString *root, NSString *prefix, NSString *html) {
             isEqual:[NSData dataWithContentsOfFile:[directory stringByAppendingPathComponent:name]]]) return NO;
     NSData *bytes = [NSData dataWithContentsOfFile:[directory stringByAppendingPathComponent:@"site.webmanifest"]];
     NSDictionary *manifest = bytes ? [NSJSONSerialization JSONObjectWithData:bytes options:0 error:nil] : nil;
-    if (![manifest isKindOfClass:NSDictionary.class] || ![manifest[@"name"] isEqual:@"IR-conv"] ||
+    if (![manifest isKindOfClass:NSDictionary.class] || ![manifest[@"name"] isEqual:@"IR Converter"] ||
         manifest[@"id"] || ![manifest[@"start_url"] isEqual:@"./"] || ![manifest[@"scope"] isEqual:@"./"] ||
         ![manifest[@"display"] isEqual:@"standalone"] || ![manifest[@"icons"] isKindOfClass:NSArray.class] || [manifest[@"icons"] count] != 5) return NO;
     NSMutableSet *expected = [NSMutableSet new];

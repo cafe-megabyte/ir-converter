@@ -1,4 +1,4 @@
-/* WebAssembly interface of the IR-conv engine. Every function marked EXPORT
+/* WebAssembly interface of the IR Converter engine. Every function marked EXPORT
  * is exported by the build (see build.sh). Pointers are linear-memory offsets. */
 #include "../../core/irconv.c"
 

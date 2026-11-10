@@ -111,7 +111,7 @@ int main(int argc, const char **argv) {
         // Without a hardcoded deployment path, let identity default to the
         // stable start_url. An explicit relative id would resolve at the origin
         // root and collide with other subdirectory installations.
-        NSDictionary *manifest = @{@"name": @"IR-conv", @"short_name": @"IR-conv",
+        NSDictionary *manifest = @{@"name": @"IR Converter", @"short_name": @"IR Converter",
             @"description": @"Infrared raw converter: red/blue swap and unbounded white balance for NEF and DNG, computed locally.",
             @"lang": @"en", @"start_url": @"./", @"scope": @"./", @"display": @"standalone",
             @"background_color": @"#111214", @"theme_color": @"#111214", @"icons": icons};

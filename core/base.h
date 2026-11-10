@@ -1,4 +1,4 @@
-/* Shared definitions for the IR-conv core. The core is freestanding C11:
+/* Shared definitions for the IR Converter core. The core is freestanding C11:
  * it compiles unchanged for wasm32 (no libc) and natively for the checks. */
 #ifndef IRCONV_BASE_H
 #define IRCONV_BASE_H

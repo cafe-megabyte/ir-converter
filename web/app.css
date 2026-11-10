@@ -9,7 +9,8 @@
 .ir.dragging .stage { outline: 2px dashed var(--accent2); outline-offset: -10px; }
 .bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
 .brand { font-weight: 650; letter-spacing: .02em;
-  background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  /* colours of the icon: glowing palm, light and deep sky */
+  background: linear-gradient(90deg, #f4faff, #81bae8 55%, #4a8ad6); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .meta { flex: 1; color: var(--muted); font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .stage { position: relative; min-height: 0; overflow: hidden; }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
@@ -17,7 +18,6 @@
   text-align: center; padding: 24px; gap: 4px; }
 .empty .drop { font-size: 17px; margin: 0; }
 .empty .hint { color: var(--muted); font-size: 13px; max-width: 34em; margin: 0; }
-.empty .version { color: var(--muted); opacity: .6; font-size: 11px; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
 .busy { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px;
   background: rgba(17, 18, 20, .55); font-size: 15px; }
 .busy[hidden], .empty[hidden], canvas[hidden] { display: none; }

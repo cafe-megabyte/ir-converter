@@ -1,4 +1,4 @@
-# IR converter
+# IR Converter
 
 A raw converter for **infrared photography**, running entirely in the browser.
 It reads **NEF** (Nikon) and **DNG**, swaps red and blue directly in the raw data,
@@ -12,7 +12,7 @@ as an app; installed copies update themselves.
 <img src="docs/swap-6500k.jpg" width="49%" alt="The same photo with red and blue swapped at 6500 K: dark blue sky and sea, white palms">
 </p>
 
-*Nikon D90, rendered by IR converter. Left: as shot (1767 K). Right: red/blue
+*Nikon D90, rendered by IR Converter. Left: as shot (1767 K). Right: red/blue
 swapped, 6500 K.*
 
 ## Why
@@ -23,7 +23,7 @@ Infrared photos need two things that common raw converters handle poorly:
 - **Extreme white balance.** Adobe Camera Raw stops at 2000 K, so the usual workaround
   is a custom `.dcp` camera profile that shifts the temperature scale.
 
-IR converter does both and writes the result into a standard DNG that Lightroom and Camera Raw
+IR Converter does both and writes the result into a standard DNG that Lightroom and Camera Raw
 open as shot. The workaround profile is created automatically.
 
 ## Use
@@ -92,12 +92,12 @@ monotonic. The start value reproduces the file's white balance exactly; the tint
 - **Raw data stays bit-exact.** DNG tiles are copied unchanged. NEF data is decompressed
   and stored as lossless JPEG, with the NEF curve as `LinearizationTable`.
 - `AsShotNeutral` holds the chosen white balance.
-- **Embedded profile “IR converter”** (the `.dcp` trick, automated):
+- **Embedded profile “IR Converter”** (the `.dcp` trick, automated):
   - `ColorMatrix` is scaled so this white point reads about 5000 K in Camera Raw and
     Lightroom, so their slider starts mid-range.
   - `ForwardMatrix` reproduces the app's colours exactly according to the DNG
     specification.
-  - The XMP sets `crd:CameraProfile="IR converter"` and drops stored WB/profile settings.
+  - The XMP sets `crd:CameraProfile="IR Converter"` and drops stored WB/profile settings.
 - **Previews:** every embedded preview is re-rendered at its original size. None is
   added if there was none. NEF imports keep the NEF's preview sizes.
 - **Fast-load proxies** (DNG 1.7, JPEG XL) hold camera RGB and follow the new white
@@ -150,7 +150,7 @@ by up to about 1 %; the raw values themselves are the same.
 - `tests/wasm-check.js` runs the same steps with `engine.wasm` in JavaScriptCore. DNG,
   JPEG and both previews must be byte-identical to the native build.
 - `raw-reference` opens the exported DNGs with Apple's raw engine (ImageIO) and compares
-  their colours with IR converter's. For the JPEGs it checks:
+  their colours with IR Converter's. For the JPEGs it checks:
   - the MPF index and the Ultra HDR XMP;
   - that ImageIO finds the ISO gain map;
   - that Core Image's HDR decode equals the SDR image times a gain between 1 and 3.

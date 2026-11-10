@@ -18,7 +18,7 @@ int main(int argc, const char **argv) {
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
         struct sockaddr_in addr = {.sin_family=AF_INET, .sin_port=htons(port), .sin_addr.s_addr=htonl(INADDR_LOOPBACK)};
         if (bind(fd, (void *)&addr, sizeof(addr)) || listen(fd, 16)) { perror("server"); return 1; }
-        printf("IR-conv: http://localhost:%d/ (Ctrl-C to stop)\n", port); fflush(stdout);
+        printf("IR Converter: http://localhost:%d/ (Ctrl-C to stop)\n", port); fflush(stdout);
         for (;;) { @autoreleasepool {
             int client = accept(fd, NULL, NULL); if (client < 0) { if (errno == EINTR) continue; break; }
             struct timeval timeout = {5, 0}; setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));

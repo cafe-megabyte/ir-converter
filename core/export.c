@@ -3,7 +3,7 @@
 #include "raw.h"
 #include "srgb_icc.h"
 
-#define APP_NAME "IR-conv"
+#define APP_NAME "IR Converter"
 #define APP_VERSION "1.0"
 #define PREVIEW_QUALITY 85
 #define JPEG_QUALITY 75

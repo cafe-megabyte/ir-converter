@@ -1,8 +1,8 @@
-// IR-conv user interface. All processing happens in worker.js / engine.wasm.
+// IR Converter user interface. All processing happens in worker.js / engine.wasm.
 const TEXT = {
   de: {
     open: 'Öffnen', drop: 'NEF- oder DNG-Datei öffnen oder hier ablegen',
-    hint: 'Alles wird lokal auf diesem Gerät berechnet. Nach dem ersten Laden funktioniert die App auch offline.',
+    hint: 'Alles wird lokal auf diesem Gerät berechnet.',
     swap: 'Rot/Blau tauschen', temp: 'Farbtemperatur', asShot: 'Wie Aufnahme',
     saveDng: 'DNG speichern', saveJpg: 'JPG speichern',
     opening: 'Öffne …', savingDng: 'Erzeuge DNG …', savingJpg: 'Erzeuge JPG …', saved: 'Gespeichert: ',
@@ -17,7 +17,7 @@ const TEXT = {
   },
   en: {
     open: 'Open', drop: 'Open or drop a NEF or DNG file',
-    hint: 'Everything is computed locally on this device. After the first visit the app also works offline.',
+    hint: 'Everything is computed locally on this device.',
     swap: 'Swap red/blue', temp: 'Temperature', asShot: 'As shot',
     saveDng: 'Save DNG', saveJpg: 'Save JPG',
     opening: 'Opening …', savingDng: 'Creating DNG …', savingJpg: 'Creating JPG …', saved: 'Saved: ',
@@ -46,14 +46,14 @@ export async function start(root, {release} = {}) {
   ui.dataset.release = release || '';
   ui.innerHTML = `
     <header class="bar">
-      <span class="brand">IR-conv</span>
+      <span class="brand">IR Converter</span>
       <span class="meta" data-ref="meta"></span>
       <label class="btn primary"><span>${t.open}</span><input data-ref="file" type="file" accept=".nef,.NEF,.dng,.DNG,image/x-adobe-dng,image/x-nikon-nef"></label>
     </header>
     <section class="stage" data-ref="stage">
       <canvas data-ref="canvas" hidden></canvas>
       <canvas data-ref="gpu" hidden></canvas>
-      <div class="empty" data-ref="empty"><p class="drop">${t.drop}</p><p class="hint">${t.hint}</p><p class="version">Version ${(release || '').slice(0, 8)}</p></div>
+      <div class="empty" data-ref="empty"><p class="drop">${t.drop}</p><p class="hint">${t.hint}</p></div>
       <div class="busy" data-ref="busy" hidden><span class="spinner"></span><span data-ref="busyText"></span></div>
     </section>
     <footer class="panel">
@@ -98,7 +98,7 @@ export async function start(root, {release} = {}) {
       const state = {device, context};
       device.lost.then(() => { if (hdr === state) { hdr = null; updateMeta(); requestView(); } });
       return state;
-    } catch (error) { console.debug('IR-conv HDR unavailable:', error); return null; }
+    } catch (error) { console.debug('IR Converter HDR unavailable:', error); return null; }
   }
   function refreshHdr() {
     initHdr().then(state => {

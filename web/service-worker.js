@@ -76,7 +76,7 @@ self.addEventListener('message', event => {
   if (event.data?.type !== 'status' || !event.ports[0]) return;
   event.waitUntil((async () => {
     let ready = await complete();
-    if (!ready && navigator.onLine) { try { await download(); ready = await complete(); } catch (e) { console.debug('IR-conv repair:', e.message); } }
+    if (!ready && navigator.onLine) { try { await download(); ready = await complete(); } catch (e) { console.debug('IR Converter repair:', e.message); } }
     event.ports[0].postMessage({ready, release: RELEASE});
   })());
 });

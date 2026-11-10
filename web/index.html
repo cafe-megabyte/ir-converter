@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111214">
   <meta name="description" content="Infrarot-RAW-Konverter: Rot/Blau-Tausch und unbegrenzter Weißabgleich für NEF und DNG, lokal und offline.">
-  <title>IR-conv</title>
-  <meta name="application-name" content="IR-conv">
-  <meta name="apple-mobile-web-app-title" content="IR-conv">
+  <title>IR Converter</title>
+  <meta name="application-name" content="IR Converter">
+  <meta name="apple-mobile-web-app-title" content="IR Converter">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="icon" href="releases/__RELEASE__/favicon.ico" sizes="16x16 32x32 48x48 64x64 128x128 256x256">
@@ -26,7 +26,7 @@
   </style>
 </head>
 <body>
-  <main id="app"><div id="boot">IR-conv …</div></main>
+  <main id="app"><div id="boot">IR Converter …</div></main>
   <script type="module">
     // The service worker caches a complete release before it takes control;
     // the app is then always imported from that worker's release. While an
@@ -64,19 +64,19 @@
           if (instance?.busy()) continue;           // keep the open image; update at next start
           await launch(state.release);
         }
-      } catch (error) { console.error('IR-conv update:', error); }
+      } catch (error) { console.error('IR Converter update:', error); }
       finally { running = false; }
     }
     function check() {
       if (document.hidden) return;
-      registration?.update().catch(error => console.debug('IR-conv update check:', error.message));
+      registration?.update().catch(error => console.debug('IR Converter update check:', error.message));
       refresh();
     }
     // Start at once with this document's release (served from the offline
     // cache when installed). Registration and update checks may wait for the
     // network, so they run in parallel and never delay the start.
     const started = launch(DOCUMENT_RELEASE).catch(error => {
-      console.error('IR-conv start:', error);
+      console.error('IR Converter start:', error);
       if (navigator.serviceWorker?.controller) refresh();   // lets the worker repair its cache
     });
     if ('serviceWorker' in navigator && isSecureContext) {
@@ -88,7 +88,7 @@
       navigator.serviceWorker.register(new URL('service-worker.js', base), {scope: base.pathname, updateViaCache: 'none'})
         .then(r => { registration = r; return started; })
         .then(() => { if (!instance) refresh(); check(); })
-        .catch(error => console.error('IR-conv offline installation:', error));
+        .catch(error => console.error('IR Converter offline installation:', error));
     }
   </script>
 </body>

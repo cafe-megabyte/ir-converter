@@ -132,7 +132,7 @@ int main(int argc, const char **argv) {
             double sa = a[0] + a[1] + a[2], sb = b[0] + b[1] + b[2], dist = 0;
             for (int c = 0; c < 3; c++) dist = fmax(dist, fabs(a[c] / sa - b[c] / sb));
             BOOL ok = dist < 0.08;
-            printf("%s %s: Apple RGB %.0f/%.0f/%.0f, IR-conv RGB %.0f/%.0f/%.0f (distance %.3f)\n", ok ? "ok  " : "FAIL",
+            printf("%s %s: Apple RGB %.0f/%.0f/%.0f, IR Converter RGB %.0f/%.0f/%.0f (distance %.3f)\n", ok ? "ok  " : "FAIL",
                    dng.lastPathComponent.UTF8String, a[0], a[1], a[2], b[0], b[1], b[2], dist);
             if (!ok) failures++;
         }
