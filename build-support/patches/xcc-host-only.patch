@@ -1,0 +1,10 @@
+--- a/Makefile
++++ b/Makefile
+@@ -236,7 +236,6 @@
+ 
+ wcc: $(WCC_OBJS)
+ 	$(CC) -o $@ $(WCC_OBJS) $(LDFLAGS)
+-	$(MAKE) wcc-libs
+ 
+ .PHONY: wcc-libs
+ wcc-libs:

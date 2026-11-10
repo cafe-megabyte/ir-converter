@@ -1,0 +1,60 @@
+.ir {
+  --bg: #111214; --panel: #1a1b1f; --line: #2a2c31; --text: #e8e8ea; --muted: #9a9ca3;
+  --accent: #e8473c; --accent2: #3c7be8; --ok: #5fbf77; --warn: #e2b04a;
+  position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto;
+  background: var(--bg); color: var(--text);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  -webkit-user-select: none; user-select: none;
+}
+.ir.dragging .stage { outline: 2px dashed var(--accent2); outline-offset: -10px; }
+.bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.brand { font-weight: 650; letter-spacing: .02em;
+  background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.meta { flex: 1; color: var(--muted); font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.stage { position: relative; min-height: 0; overflow: hidden; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 24px; gap: 4px; }
+.empty .drop { font-size: 17px; margin: 0; }
+.empty .hint { color: var(--muted); font-size: 13px; max-width: 34em; margin: 0; }
+.empty .version { color: var(--muted); opacity: .6; font-size: 11px; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+.busy { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(17, 18, 20, .55); font-size: 15px; }
+.busy[hidden], .empty[hidden], canvas[hidden] { display: none; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--muted); border-top-color: transparent;
+  animation: ir-spin .8s linear infinite; }
+@keyframes ir-spin { to { transform: rotate(360deg); } }
+.panel { background: var(--panel); border-top: 1px solid var(--line);
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); display: grid; gap: 10px; }
+.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.temp .label { color: var(--muted); min-width: 8.5em; }
+.temp .slider { flex: 1 1 200px; min-width: 140px; accent-color: var(--accent2); height: 28px; }
+.kelvin { display: inline-flex; align-items: center; gap: 4px; }
+.kelvin input { width: 7.5em; text-align: right; font: inherit; font-variant-numeric: tabular-nums; color: var(--text);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; -webkit-user-select: text; user-select: text; }
+.kelvin input:focus { outline: 2px solid var(--accent2); outline-offset: -1px; }
+.asshot { color: var(--muted); font-size: 13px; margin-left: auto; }
+.btn { font: inherit; color: var(--text); background: #26282e; border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 14px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; position: relative; }
+.btn:hover:not(:disabled) { background: #30333a; }
+.btn:disabled, input:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+.btn.primary input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.actions .msg { flex: 1; min-width: 12em; font-size: 13px; color: var(--muted); }
+.msg[data-kind="error"] { color: var(--accent); }
+.msg[data-kind="warn"] { color: var(--warn); }
+.msg[data-kind="ok"] { color: var(--ok); }
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch .track { width: 40px; height: 22px; border-radius: 11px; background: #3a3d44; position: relative; transition: background .15s; flex: none; }
+.switch .knob { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform .15s; }
+.switch input:checked + .track { background: linear-gradient(90deg, var(--accent2), var(--accent)); }
+.switch input:checked + .track .knob { transform: translateX(18px); }
+.switch input:focus-visible + .track { outline: 2px solid var(--accent2); outline-offset: 2px; }
+.switch input:disabled + .track { opacity: .45; }
+@media (max-width: 560px) {
+  .temp .label { min-width: 0; width: 100%; }
+  .asshot { margin-left: 0; width: 100%; }
+  .actions .btn { flex: 1; justify-content: center; }
+}

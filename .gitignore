@@ -1,0 +1,10 @@
+# Build output (make)
+/build/
+
+# Private sample photos used by `make check`
+/samples/
+
+# macOS
+.DS_Store
+._*
+.AppleDouble/

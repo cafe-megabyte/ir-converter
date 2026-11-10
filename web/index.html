@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111214">
+  <meta name="description" content="Infrarot-RAW-Konverter: Rot/Blau-Tausch und unbegrenzter Weißabgleich für NEF und DNG, lokal und offline.">
+  <title>IR-conv</title>
+  <meta name="application-name" content="IR-conv">
+  <meta name="apple-mobile-web-app-title" content="IR-conv">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="icon" href="releases/__RELEASE__/favicon.ico" sizes="16x16 32x32 48x48 64x64 128x128 256x256">
+  <link rel="icon" type="image/png" sizes="16x16" href="releases/__RELEASE__/favicon-16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="releases/__RELEASE__/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="releases/__RELEASE__/favicon-48.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="releases/__RELEASE__/apple-touch-icon-152.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="releases/__RELEASE__/apple-touch-icon-167.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="releases/__RELEASE__/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <style>
+    html,body{margin:0;height:100%;background:#111214;color:#e8e8ea;color-scheme:dark;
+      font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+    #app{position:fixed;inset:0}
+    #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;opacity:.6}
+  </style>
+</head>
+<body>
+  <main id="app"><div id="boot">IR-conv …</div></main>
+  <script type="module">
+    // The service worker caches a complete release before it takes control;
+    // the app is then always imported from that worker's release. While an
+    // image is open, a newly installed release waits for the next start.
+    const DOCUMENT_RELEASE = '__RELEASE__';
+    const root = document.getElementById('app');
+    const base = new URL('./', location.href);
+    let registration, instance, activeRelease, running = false, requested = false;
+
+    async function launch(release) {
+      const app = await import(new URL(`releases/${release}/app.js`, base));
+      const next = await app.start(root, {release});
+      instance?.dispose();
+      instance = next; activeRelease = release;
+    }
+    function status(worker) {
+      return new Promise((resolve, reject) => {
+        const channel = new MessageChannel();
+        const timer = setTimeout(() => { channel.port1.close(); reject(new Error('Offline check timed out')); }, 20000);
+        channel.port1.onmessage = ({data}) => { clearTimeout(timer); channel.port1.close(); resolve(data); };
+        worker.postMessage({type: 'status'}, [channel.port2]);
+      });
+    }
+    async function refresh() {
+      requested = true;
+      if (running) return;
+      running = true;
+      try {
+        while (requested) {
+          requested = false;
+          const controller = navigator.serviceWorker.controller;
+          if (!controller) continue;
+          const state = await status(controller);
+          if (!state.ready || !/^[a-f0-9-]{36}$/.test(state.release) || state.release === activeRelease) continue;
+          if (instance?.busy()) continue;           // keep the open image; update at next start
+          await launch(state.release);
+        }
+      } catch (error) { console.error('IR-conv update:', error); }
+      finally { running = false; }
+    }
+    function check() {
+      if (document.hidden) return;
+      registration?.update().catch(error => console.debug('IR-conv update check:', error.message));
+      refresh();
+    }
+    // Start at once with this document's release (served from the offline
+    // cache when installed). Registration and update checks may wait for the
+    // network, so they run in parallel and never delay the start.
+    const started = launch(DOCUMENT_RELEASE).catch(error => {
+      console.error('IR-conv start:', error);
+      if (navigator.serviceWorker?.controller) refresh();   // lets the worker repair its cache
+    });
+    if ('serviceWorker' in navigator && isSecureContext) {
+      navigator.serviceWorker.addEventListener('controllerchange', refresh);
+      navigator.serviceWorker.addEventListener('message', ({data}) => { if (data?.type === 'offline-ready') refresh(); });
+      window.addEventListener('online', check);
+      document.addEventListener('visibilitychange', check);
+      setInterval(check, 30 * 60 * 1000);
+      navigator.serviceWorker.register(new URL('service-worker.js', base), {scope: base.pathname, updateViaCache: 'none'})
+        .then(r => { registration = r; return started; })
+        .then(() => { if (!instance) refresh(); check(); })
+        .catch(error => console.error('IR-conv offline installation:', error));
+    }
+  </script>
+</body>
+</html>
